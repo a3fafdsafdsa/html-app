@@ -1,5 +1,5 @@
-name: Build Android Signed APK + iOS Unsigned IPA
-run-name: Build Signed APK & IPA
+name: Build Signed APK + IPA Full
+run-name: Full Build Signed APK & IPA
 on:
   workflow_dispatch:
 
@@ -11,11 +11,10 @@ jobs:
       ANDROID_ROOT: $GITHUB_WORKSPACE/android
       ARCHIVE_PATH: $GITHUB_WORKSPACE/build/App.xcarchive
       OUTPUT_DIR: $GITHUB_WORKSPACE/output
-      # 临时签名配置（流水线运行时动态使用，无需提前上传）
-      KEYSTORE_FILE: $GITHUB_WORKSPACE/temp-key.jks
-      KEYSTORE_PASS: Temp@123456
-      KEY_ALIAS: tempkey
-      KEY_PASS: Temp@123456
+      KEYSTORE_FILE: $GITHUB_WORKSPACE/temp.jks
+      KEYSTORE_PASS: Test@666888
+      KEY_ALIAS: testkey
+      KEY_PASS: Test@666888
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -25,87 +24,86 @@ jobs:
         with:
           node-version: 22
 
-      - name: Set npm mirror
+      - name: NPM Mirror
         run: npm config set registry https://registry.npmmirror.com
 
-      - name: Install dependencies
+      - name: Install Dependencies
         run: npm ci
 
-      - name: Build frontend dist
+      - name: Build Web Dist
         run: npm run build
 
-      - name: Generate Capacitor Native Projects
+      # 重建双平台
+      - name: Create Native Projects
         run: |
           rm -rf ios android
           npx cap add android
           npx cap add ios
 
-      # 自动生成各尺寸应用图标
-      - name: Generate App Icon
+      # 自动生成APP图标
+      - name: Generate Icons
         run: npm run assets
 
-      - name: Prepare android assets dir
+      # 修复安卓目录
+      - name: Fix Android Assets
         run: mkdir -p ${{ env.ANDROID_ROOT }}/app/src/main/assets
 
-      - name: Capacitor Sync
+      - name: Cap Sync
         run: npx cap sync
 
-      # 修复Gradle Java版本 21→17
-      - name: Fix Gradle Java Version to 17
+      # 修复新版Capacitor Java21 → 兼容JDK17
+      - name: Fix Gradle Java Version
         run: |
           sed -i '' 's|VERSION_21|VERSION_17|g' ${{ env.ANDROID_ROOT }}/app/build.gradle
 
-      # ======================【新增1】动态生成临时密钥库 ======================
-      - name: Generate temporary keystore
+      # 自动生成临时签名证书
+      - name: Generate Temp Keystore
         run: |
           keytool -genkey -v \
             -keystore ${{ env.KEYSTORE_FILE }} \
             -alias ${{ env.KEY_ALIAS }} \
-            -keyalg RSA \
-            -keysize 2048 \
-            -validity 10000 \
+            -keyalg RSA -keysize 2048 -validity 10000 \
             -storepass ${{ env.KEYSTORE_PASS }} \
             -keypass ${{ env.KEY_PASS }} \
-            -dname "CN=TempDev, OU=Dev, O=Company, L=City, S=State, C=CN"
+            -dname "CN=User, OU=Dev, O=Dev, L=HZ, S=ZJ, C=CN"
 
-      # ======================【新增2】动态修改build.gradle开启Release签名 ======================
-      - name: Inject signing config into build.gradle
+      # 动态注入签名配置
+      - name: Inject Release Signing
         run: |
           cat >> ${{ env.ANDROID_ROOT }}/app/build.gradle <<EOF
 
 android {
     signingConfigs {
-        releaseSign {
+        releaseTemp {
             storeFile file("${{ env.KEYSTORE_FILE }}")
             storePassword "${{ env.KEYSTORE_PASS }}"
             keyAlias "${{ env.KEY_ALIAS }}"
             keyPassword "${{ env.KEY_PASS }}"
         }
     }
-
     buildTypes {
         release {
-            signingConfig signingConfigs.releaseSign
+            signingConfig signingConfigs.releaseTemp
         }
     }
 }
 EOF
 
-      - name: Setup JDK 17 for Android
+      - name: Setup JDK17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
           cache: gradle
 
-      # 编译【已签名Release APK】
-      - name: Build Signed Release APK
+      # 编译【已签名APK】
+      - name: Build Signed APK
         run: |
           cd ${{ env.ANDROID_ROOT }}
           chmod +x gradlew
           ./gradlew assembleRelease
 
-      # iOS SPM 归档编译
+      # iOS 编译
       - name: Xcode Archive iOS
         run: |
           cd ${{ env.IOS_ROOT }}
@@ -119,8 +117,8 @@ EOF
             CODE_SIGNING_ALLOWED=NO \
             DEVELOPMENT_TEAM=""
 
-      # 手动打包IPA，绕过TeamID导出限制
-      - name: Manual Package iOS IPA
+      # 手动打包IPA（无签名报错）
+      - name: Build IPA
         run: |
           mkdir -p ${{ env.OUTPUT_DIR }}/Payload
           cp -r "${{ env.ARCHIVE_PATH }}/Products/Applications/App.app" "${{ env.OUTPUT_DIR }}/Payload/"
@@ -128,15 +126,16 @@ EOF
           zip -q -r App.ipa Payload
           rm -rf Payload
 
-      # 复制【签名APK】到输出目录
-      - name: Copy Signed APK to Output
+      # 复制成品
+      - name: Copy Outputs
         run: |
+          mkdir -p ${{ env.OUTPUT_DIR }}
           cp ${{ env.ANDROID_ROOT }}/app/build/outputs/apk/release/app-release.apk ${{ env.OUTPUT_DIR }}/
 
-      # 上传产物
-      - name: Upload Build Artifacts
+      # 上传下载包
+      - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Build-Artifacts
+          name: 乐盈-成品包
           path: ${{ env.OUTPUT_DIR }}/
-          retention-days: 14
+          retention-days: 30
