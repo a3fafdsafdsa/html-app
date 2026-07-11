@@ -1,5 +1,6 @@
 name: Build Signed APK + IPA Full
 run-name: Full Build Signed APK & IPA
+
 on:
   workflow_dispatch:
 
@@ -15,6 +16,7 @@ jobs:
       KEYSTORE_PASS: Test@666888
       KEY_ALIAS: testkey
       KEY_PASS: Test@666888
+
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -33,30 +35,25 @@ jobs:
       - name: Build Web Dist
         run: npm run build
 
-      # 重建双平台
       - name: Create Native Projects
         run: |
           rm -rf ios android
           npx cap add android
           npx cap add ios
 
-      # 自动生成APP图标
       - name: Generate Icons
         run: npm run assets
 
-      # 修复安卓目录
       - name: Fix Android Assets
         run: mkdir -p ${{ env.ANDROID_ROOT }}/app/src/main/assets
 
       - name: Cap Sync
         run: npx cap sync
 
-      # 修复新版Capacitor Java21 → 兼容JDK17
       - name: Fix Gradle Java Version
         run: |
           sed -i '' 's|VERSION_21|VERSION_17|g' ${{ env.ANDROID_ROOT }}/app/build.gradle
 
-      # 自动生成临时签名证书
       - name: Generate Temp Keystore
         run: |
           keytool -genkey -v \
@@ -67,11 +64,9 @@ jobs:
             -keypass ${{ env.KEY_PASS }} \
             -dname "CN=User, OU=Dev, O=Dev, L=HZ, S=ZJ, C=CN"
 
-      # 动态注入签名配置
       - name: Inject Release Signing
         run: |
-          cat >> ${{ env.ANDROID_ROOT }}/app/build.gradle <<EOF
-
+          cat >> ${{ env.ANDROID_ROOT }}/app/build<EOF
 android {
     signingConfigs {
         releaseTemp {
@@ -96,14 +91,12 @@ EOF
           distribution: 'temurin'
           cache: gradle
 
-      # 编译【已签名APK】
       - name: Build Signed APK
         run: |
           cd ${{ env.ANDROID_ROOT }}
           chmod +x gradlew
           ./gradlew assembleRelease
 
-      # iOS 编译
       - name: Xcode Archive iOS
         run: |
           cd ${{ env.IOS_ROOT }}
@@ -117,7 +110,6 @@ EOF
             CODE_SIGNING_ALLOWED=NO \
             DEVELOPMENT_TEAM=""
 
-      # 手动打包IPA（无签名报错）
       - name: Build IPA
         run: |
           mkdir -p ${{ env.OUTPUT_DIR }}/Payload
@@ -126,13 +118,11 @@ EOF
           zip -q -r App.ipa Payload
           rm -rf Payload
 
-      # 复制成品
       - name: Copy Outputs
         run: |
           mkdir -p ${{ env.OUTPUT_DIR }}
           cp ${{ env.ANDROID_ROOT }}/app/build/outputs/apk/release/app-release.apk ${{ env.OUTPUT_DIR }}/
 
-      # 上传下载包
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
