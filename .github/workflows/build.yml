@@ -34,7 +34,6 @@ jobs:
       - name: Install Dependencies
         run: npm install
 
-      # ==========新增：修复bin脚本执行权限==========
       - name: Fix binary execute permission
         run: chmod +x ./node_modules/.bin/*
 
@@ -48,7 +47,7 @@ jobs:
           npx cap add ios
 
       - name: Generate Icons
-        run: npm run assets
+        run: npx capacitor-assets generate assets/icon.png
 
       - name: Fix Android Assets
         run: mkdir -p ${{ env.ANDROID_ROOT }}/app/src/main/assets
@@ -74,10 +73,11 @@ jobs:
         run: |
           printf "\nandroid {\n    signingConfigs {\n        releaseTemp {\n            storeFile file(\"%s\")\n            storePassword \"%s\"\n            keyAlias \"%s\"\n            keyPassword \"%s\"\n        }\n    }\n    buildTypes {\n        release {\n            signingConfig signingConfigs.releaseTemp\n        }\n    }\n}" "${{ env.KEYSTORE_FILE }}" "${{ env.KEYSTORE_PASS }}" "${{ env.KEY_ALIAS }}" "${{ env.KEY_PASS }}" >> ${{ env.ANDROID_ROOT }}/app/build.gradle
 
-      - name: Setup JDK17
+      # ===========关键修改：java-version: 21 ===========
+      - name: Setup JDK21
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
+          java-version: '21'
           distribution: 'temurin'
           cache: gradle
 
@@ -116,6 +116,6 @@ jobs:
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: 成品包
+          name: 乐盈-成品包
           path: ${{ env.OUTPUT_DIR }}/
           retention-days: 30
