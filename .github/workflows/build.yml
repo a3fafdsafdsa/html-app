@@ -25,6 +25,10 @@ jobs:
       - name: Install NPM dependencies
         run: npm ci
 
+      # 关键修复：预先创建assets目录，解决sync报错
+      - name: Prepare android assets folder
+        run: mkdir -p android/app/src/main/assets
+
       - name: Capacitor sync
         run: npx cap sync
 
