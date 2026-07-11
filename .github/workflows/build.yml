@@ -1,0 +1,130 @@
+name: Build App Android(TempKey) + iOS(Unsigned)
+run-name: Temp Keystore Android + Unsigned IPA
+on:
+  workflow_dispatch: # 网页手动触发打包
+
+jobs:
+  build:
+    runs-on: macos-latest
+    env:
+      APP_ID: com.ctq.qmc.yiban.product
+      KEYSTORE_FILE: android/app/temp-release.keystore
+      KEYSTORE_PWD: 123456
+      KEY_ALIAS: appkey
+      KEY_PWD: 123456
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install NPM dependencies
+        run: npm ci
+
+      - name: Capacitor sync
+        run: npx cap sync
+
+      ##############################
+      # Android：云端自动生成临时签名密钥
+      ##############################
+      - name: Auto Generate Keystore
+        run: |
+          keytool -genkey -v \
+            -keystore ${{ env.KEYSTORE_FILE }} \
+            -alias ${{ env.KEY_ALIAS }} \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass ${{ env.KEYSTORE_PWD }} \
+            -keypass ${{ env.KEY_PWD }} \
+            -dname "CN=Dev, OU=Dev, O=Dev, L=ChongQing, S=CQ, C=CN"
+
+      - name: Inject signing config into build.gradle
+        run: |
+          echo "
+          android {
+              signingConfigs {
+                  release {
+                      storeFile file('temp-release.keystore')
+                      storePassword '${{ env.KEYSTORE_PWD }}'
+                      keyAlias '${{ env.KEY_ALIAS }}'
+                      keyPassword '${{ env.KEY_PWD }}'
+                  }
+              }
+              buildTypes {
+                  release {
+                      signingConfig signingConfigs.release
+                      minifyEnabled false
+                      proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+                  }
+              }
+          }
+          " >> android/app/build.gradle
+
+      - name: Build Signed Release APK
+        working-directory: ./android
+        run: ./gradlew assembleRelease
+
+      ##############################
+      # iOS：编译不签名，输出未签名裸IPA
+      ##############################
+      - name: Install CocoaPods
+        working-directory: ./ios/App
+        run: pod install
+
+      - name: Xcode Archive iOS (NO SIGNING)
+        run: |
+          cd ios/App
+          xcodebuild archive \
+            -workspace App.xcworkspace \
+            -scheme App \
+            -configuration Release \
+            -archivePath $GITHUB_WORKSPACE/build/App.xcarchive \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Create exportOptions.plist (No Sign)
+        run: |
+          cat > exportOptions.plist <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>development</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>signingCertificate</key>
+            <string></string>
+            <key>provisioningProfiles</key>
+            <dict/>
+          </dict>
+          </plist>
+          EOF
+
+      - name: Export unsigned IPA
+        run: |
+          xcodebuild -exportArchive \
+            -archivePath build/App.xcarchive \
+            -exportOptionsPlist exportOptions.plist \
+            -exportPath ./output
+
+      ##############################
+      # 上传构建产物
+      ##############################
+      - name: Upload Signed Android APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Android-Temp-Signed-APK
+          path: android/app/build/outputs/apk/release/app-release.apk
+          retention-days: 14
+
+      - name: Upload Unsigned iOS IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: iOS-Unsigned-IPA
+          path: output/*.ipa
+          retention-days: 14
