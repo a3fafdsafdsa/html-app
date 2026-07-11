@@ -7,8 +7,7 @@ jobs:
   build:
     runs-on: macos-latest
     env:
-      BASE: $GITHUB_WORKSPACE
-      IOS_PROJECT_ROOT: $GITHUB_WORKSPACE/ios/App
+      IOS_ROOT: $GITHUB_WORKSPACE/ios/App
       ARCHIVE_PATH: $GITHUB_WORKSPACE/build/App.xcarchive
       OUTPUT_FOLDER: $GITHUB_WORKSPACE/output
     steps:
@@ -20,53 +19,48 @@ jobs:
         with:
           node-version: 22
 
-      # NPM缓存
+      # npm依赖缓存
       - name: Cache Node Modules
         uses: actions/cache@v3
         with:
           path: node_modules
           key: ${{ runner.os }}-node-${{ hashFiles('package-lock.json') }}
 
-      - name: Set npm 国内镜像
+      - name: Set npm 淘宝镜像
         run: npm config set registry https://registry.npmmirror.com
 
-      - name: Install NPM dependencies
+      - name: Install dependencies
         run: npm ci
 
-      # 目录打印校验
-      - name: Check iOS Root Directory
+      # 【关键逻辑】自动检测并完整新建iOS平台
+      - name: Generate iOS native project
         run: |
-          echo "iOS项目根目录: ${{ env.IOS_PROJECT_ROOT }}"
-          ls -la ${{ env.IOS_PROJECT_ROOT }}
-
-      - name: Prepare android assets folder
-        run: mkdir -p android/app/src/main/assets
-
-      - name: Capacitor sync android
-        run: npx cap sync android
+          rm -rf ios
+          npx cap add ios
+          npx cap sync ios
 
       ###################################################################
-      # Android 构建全部注释，暂时跳过
+      # Android 全部跳过
       ###################################################################
 
       ##############################
-      # iOS 构建流程（Podfile 在 ios/App）
+      # iOS 编译
       ##############################
-      # CocoaPods缓存
+      # Pod缓存
       - name: Cache CocoaPods
         uses: actions/cache@v3
         with:
-          path: ${{ env.IOS_PROJECT_ROOT }}/Pods
-          key: ${{ runner.os }}-pods-${{ hashFiles('${{ env.IOS_PROJECT_ROOT }}/Podfile.lock') }}
+          path: ${{ env.IOS_ROOT }}/Pods
+          key: ${{ runner.os }}-pods-${{ hashFiles('${{ env.IOS_ROOT }}/Podfile.lock') }}
 
-      - name: Install CocoaPods
+      - name: Pod install
         run: |
-          cd ${{ env.IOS_PROJECT_ROOT }}
+          cd ${{ env.IOS_ROOT }}
           pod install --repo-update
 
-      - name: Xcode Archive iOS (No Signing)
+      - name: Xcode Archive (No Sign)
         run: |
-          cd ${{ env.IOS_PROJECT_ROOT }}
+          cd ${{ env.IOS_ROOT }}
           xcodebuild archive \
             -workspace App.xcworkspace \
             -scheme App \
@@ -76,7 +70,7 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO
 
-      - name: Prepare export config
+      - name: Prepare exportOptions
         run: |
           mkdir -p ${{ env.OUTPUT_FOLDER }}
           cat > exportOptions.plist <<EOF
@@ -103,10 +97,8 @@ jobs:
             -exportOptionsPlist exportOptions.plist \
             -exportPath ${{ env.OUTPUT_FOLDER }}
 
-      ##############################
-      # 上传IPA产物
-      ##############################
-      - name: Upload Unsigned iOS IPA
+      # 上传产物
+      - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
           name: iOS-Unsigned-IPA
