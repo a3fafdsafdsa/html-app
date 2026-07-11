@@ -32,11 +32,8 @@ jobs:
           npx cap add ios
           npx cap sync ios
 
-      - name: Debug List ios/App
-        run: ls -la ${{ env.IOS_ROOT }}
-
       ##############################
-      # 归档：强制关闭所有签名、不绑定团队
+      # ARCHIVE 归档（成功，之前这一步一直没问题）
       ##############################
       - name: Xcode Archive
         run: |
@@ -52,46 +49,21 @@ jobs:
             DEVELOPMENT_TEAM=""
 
       ##############################
-      # 导出修复关键点
-      # 1. method改为 `debugging` 替代废弃的development
-      # 2. 添加 teamID="" 解决 No Team Found
-      # 3. compileBitcode关闭
+      # 【关键改动】不使用xcodebuild导出IPA！
+      # 直接从xcarchive取出.app，手动构建IPA，完全避开teamID校验
       ##############################
-      - name: Prepare exportOptions.plist
+      - name: Manual build IPA (Bypass Xcode export team check)
         run: |
-          mkdir -p ${{ env.OUTPUT_FOLDER }}
-          cat > exportOptions.plist <<EOF
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>method</key>
-            <string>debugging</string>
-            <key>signingStyle</key>
-            <string>manual</string>
-            <key>signingCertificate</key>
-            <string></string>
-            <key>teamID</key>
-            <string></string>
-            <key>compileBitcode</key>
-            <false/>
-            <key>provisioningProfiles</key>
-            <dict/>
-          </dict>
-          </plist>
-          EOF
-
-      - name: Export unsigned IPA
-        run: |
-          xcodebuild -exportArchive \
-            -archivePath ${{ env.ARCHIVE_PATH }} \
-            -exportOptionsPlist exportOptions.plist \
-            -exportPath ${{ env.OUTPUT_FOLDER }}
+          mkdir -p ${{ env.OUTPUT_FOLDER }}/Payload
+          cp -r "${{ env.ARCHIVE_PATH }}/Products/Applications/App.app" "${{ env.OUTPUT_FOLDER }}/Payload/"
+          cd ${{ env.OUTPUT_FOLDER }}
+          zip -q -r App.ipa Payload
+          rm -rf Payload
 
       # 上传产物
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
           name: iOS-Unsigned-IPA
-          path: ${{ env.OUTPUT_FOLDER }}/*.ipa
+          path: ${{ env.OUTPUT_FOLDER }}/App.ipa
           retention-days: 14
