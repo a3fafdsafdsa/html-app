@@ -1,1 +1,31 @@
 
+name: Auto Unzip Source Zip
+on:
+  push:
+    paths:
+      - '**.zip'
+  workflow_dispatch:
+
+jobs:
+  unzip:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Unzip archive
+        run: |
+          mkdir temp
+          unzip *.zip -d temp/
+          cp -r temp/* ./
+          rm -rf temp *.zip
+
+      - name: Commit extracted source
+        run: |
+          git config user.name "bot"
+          git config user.email "bot@github.com"
+          git add .
+          git commit -m "Auto extract source zip" || echo "No changes"
+          git push origin main
