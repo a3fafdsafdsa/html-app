@@ -1,5 +1,7 @@
-
 name: Auto Unzip Source Zip
+# 必须添加权限，允许action提交代码回仓库
+permissions:
+  contents: write
 on:
   push:
     paths:
@@ -10,22 +12,26 @@ jobs:
   unzip:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Unzip archive
+      - name: Unzip uploaded archive（强制覆盖文件）
         run: |
-          mkdir temp
-          unzip *.zip -d temp/
-          cp -r temp/* ./
+          mkdir -p temp
+          # -o 自动覆盖，非交互式
+          unzip -o *.zip -d temp/
+          # 递归强制覆盖所有文件到仓库根目录
+          cp -rf temp/* ./
+          # 清理临时文件夹 + 原始zip包（关键：防止无限循环触发）
           rm -rf temp *.zip
 
-      - name: Commit extracted source
+      - name: Commit extracted source code
         run: |
-          git config user.name "bot"
+          git config user.name "auto-bot"
           git config user.email "bot@github.com"
           git add .
-          git commit -m "Auto extract source zip" || echo "No changes"
+          # 没有变更直接跳过提交，避免空commit
+          git diff --cached --quiet || git commit -m "Auto extract source zip"
           git push origin main
