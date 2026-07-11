@@ -34,9 +34,18 @@ jobs:
           rm -rf ios android
           npx cap add android
           npx cap add ios
-          mkdir -p ${{ env.ANDROID_ROOT }}/app/src/main/assets
-          npx cap sync
 
+      # ======================【重点：自动生成图标，写入双平台资源】======================
+      - name: Generate App Icon & Splash Screen
+        run: npm run assets
+
+      - name: Prepare android assets dir
+        run: mkdir -p ${{ env.ANDROID_ROOT }}/app/src/main/assets
+
+      - name: Capacitor Sync
+        run: npx cap sync
+
+      # 修复Java版本兼容，维持JDK17编译安卓
       - name: Fix Gradle Java Version to 17
         run: |
           sed -i '' 's|VERSION_21|VERSION_17|g' ${{ env.ANDROID_ROOT }}/app/build.gradle
@@ -54,6 +63,7 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleRelease
 
+      # iOS SPM 归档编译
       - name: Xcode Archive iOS
         run: |
           cd ${{ env.IOS_ROOT }}
@@ -67,7 +77,7 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             DEVELOPMENT_TEAM=""
 
-      # =========【修复】提前创建output，打包后验证文件存在 =========
+      # 手动打包IPA，绕过TeamID导出限制
       - name: Manual Package iOS IPA
         run: |
           mkdir -p ${{ env.OUTPUT_DIR }}/Payload
@@ -75,15 +85,14 @@ jobs:
           cd ${{ env.OUTPUT_DIR }}
           zip -q -r App.ipa Payload
           rm -rf Payload
-          ls -la ${{ env.OUTPUT_DIR }}
 
-      - name: Copy APK to Output
+      # 复制APK输出
+      - name: Copy APK to Output Folder
         run: |
-          mkdir -p ${{ env.OUTPUT_DIR }}
           cp ${{ env.ANDROID_ROOT }}/app/build/outputs/apk/release/app-release-unsigned.apk ${{ env.OUTPUT_DIR }}/
-          ls -la ${{ env.OUTPUT_DIR }}
 
-      - name: Upload All Artifacts
+      # 上传产物（页面底部Artifacts下载）
+      - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: Build-Artifacts
