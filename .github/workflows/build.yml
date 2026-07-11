@@ -25,7 +25,7 @@ jobs:
       - name: Install NPM dependencies
         run: npm ci
 
-      # 关键修复：预先创建assets目录，解决sync报错
+      # 预先创建assets目录，解决cap sync报错
       - name: Prepare android assets folder
         run: mkdir -p android/app/src/main/assets
 
@@ -43,7 +43,7 @@ jobs:
             -keyalg RSA -keysize 2048 -validity 10000 \
             -storepass ${{ env.KEYSTORE_PWD }} \
             -keypass ${{ env.KEY_PWD }} \
-            -dname "CN=Dev, OU=Dev, O=Dev, L=ChongQing, S=CQ, C=CN"
+            -dname "CN=Dev, OU=Dev, O=Dev, L=ChongQing, ST=CQ, C=CN"
 
       - name: Inject signing config into build.gradle
         run: |
@@ -69,7 +69,9 @@ jobs:
 
       - name: Build Signed Release APK
         working-directory: ./android
-        run: ./gradlew assembleRelease
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease
 
       ##############################
       # iOS：编译不签名，输出未签名裸IPA
