@@ -64,25 +64,9 @@ jobs:
             -keypass ${{ env.KEY_PASS }} \
             -dname "CN=User, OU=Dev, O=Dev, L=HZ, S=ZJ, C=CN"
 
-      - name: Inject Release Signing
+      - name: Inject Release Signing Config
         run: |
-          cat >> ${{ env.ANDROID_ROOT }}/app/build<EOF
-android {
-    signingConfigs {
-        releaseTemp {
-            storeFile file("${{ env.KEYSTORE_FILE }}")
-            storePassword "${{ env.KEYSTORE_PASS }}"
-            keyAlias "${{ env.KEY_ALIAS }}"
-            keyPassword "${{ env.KEY_PASS }}"
-        }
-    }
-    buildTypes {
-        release {
-            signingConfig signingConfigs.releaseTemp
-        }
-    }
-}
-EOF
+          printf "\nandroid {\n    signingConfigs {\n        releaseTemp {\n            storeFile file(\"%s\")\n            storePassword \"%s\"\n            keyAlias \"%s\"\n            keyPassword \"%s\"\n        }\n    }\n    buildTypes {\n        release {\n            signingConfig signingConfigs.releaseTemp\n        }\n    }\n}" "${{ env.KEYSTORE_FILE }}" "${{ env.KEYSTORE_PASS }}" "${{ env.KEY_ALIAS }}" "${{ env.KEY_PASS }}" >> ${{ env.ANDROID_ROOT }}/app/build.gradle
 
       - name: Setup JDK17
         uses: actions/setup-java@v4
